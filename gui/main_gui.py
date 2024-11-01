@@ -2,16 +2,18 @@
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QIcon
 import sys
 import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import json
+from datetime import datetime, timedelta
 import pandas as pd
-import numpy as np
 import yfinance as yf
+
+# Import necessary functions
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.models import run_lstm, run_arima, run_linear_regression, run_ets
 from src.preprocessing import preprocess_data
-
-# gui/main_gui.py
 
 class TrainWorker(QThread):
     """Worker thread for training the LSTM model to keep the GUI responsive."""
@@ -32,56 +34,83 @@ class TrainWorker(QThread):
     def run(self):
         def callback(message, epoch, total_epochs):
             self.progress.emit(message)
-            progress = int((epoch / total_epochs) * 100)  # Calculate progress percentage
-            self.progress_value.emit(progress)
-        
-        # Run LSTM training with the callback for progress updates and user-defined parameters
+            self.progress_value.emit(int((epoch / total_epochs) * 100))
+
         forecast, mse = run_lstm(
             self.scaled_data, self.scaler, callback=callback,
             epochs=self.epochs, batch_size=self.batch_size, units=self.units,
             learning_rate=self.learning_rate, lookback=self.lookback
         )
         self.result.emit(forecast, mse)
-        self.progress_value.emit(100)  # Set progress to 100% once completed
-
+        self.progress_value.emit(100)  # Complete progress
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Learning Dashboard")
         self.setGeometry(100, 100, 800, 600)
-        
-        # Main layout and tab widget
+
+        # Main layout and tab setup
         main_widget = QWidget()
         main_layout = QVBoxLayout()
         self.tabs = QTabWidget()
         
         # Add tabs
         self.tabs.addTab(self.create_dashboard_tab(), "Learning Dashboard")
-        self.tabs.addTab(self.create_model_tab("LSTM"), "LSTM")
+        self.tabs.setTabIcon(0, QIcon("assets/icons/cpu.svg"))
+
+        self.tabs.addTab(self.create_lstm_tab(), "LSTM")
+        self.tabs.setTabIcon(1, QIcon("assets/icons/feather.svg"))
+
         self.tabs.addTab(self.create_model_tab("ARIMA"), "ARIMA")
+        self.tabs.setTabIcon(2, QIcon("assets/icons/fingerprint.svg"))
+
         self.tabs.addTab(self.create_model_tab("LR"), "Linear Regression")
+        self.tabs.setTabIcon(3, QIcon("assets/icons/flag.svg"))
+
         self.tabs.addTab(self.create_model_tab("ETS"), "ETS")
+        self.tabs.setTabIcon(4, QIcon("assets/icons/flower1.svg"))
+
         
         main_layout.addWidget(self.tabs)
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
 
-        # Connect buttons to their respective functions
+        # Connect buttons
         self.display_data_button.clicked.connect(self.display_data)
-        self.start_prediction_button.clicked.connect(self.start_prediction)
-        self.clear_output_button.clicked.connect(self.clear_output)
-        self.copy_output_button.clicked.connect(self.copy_output)
+        self.display_data_button.setIcon(QIcon("assets/icons/database-down.svg"))
 
-        # Placeholder for fetched data
-        self.data = None
+        self.start_prediction_button.clicked.connect(self.start_prediction)
+        self.start_prediction_button.setIcon(QIcon("assets/icons/play.svg"))
+
+        self.clear_output_button.clicked.connect(self.clear_output)
+        self.clear_output_button.setIcon(QIcon("assets/icons/x-square-fill.svg"))
+
+        self.copy_output_button.clicked.connect(self.copy_output)
+        self.copy_output_button.setIcon(QIcon("assets/icons/copy.svg"))
+
+
+        self.data = None  # Placeholder for data
+
+    def create_model_tab(self, model_name):
+        """Creates a model-specific tab with a placeholder for model controls."""
+        tab = QWidget()
+        layout = QVBoxLayout()
+        
+        # Display a label with the model name
+        layout.addWidget(QLabel(f"Parameter controls for {model_name} model"))
+
+        # No specific parameters for ARIMA, Linear Regression, and ETS currently
+        tab.setLayout(layout)
+        return tab
+
 
     def create_dashboard_tab(self):
-        """Creates the main dashboard tab with model selection and data source options."""
+        """Main dashboard tab for model selection and data sources."""
         tab = QWidget()
         layout = QVBoxLayout()
 
-        # Model Selection GroupBox
+        # Model Selection
         model_group = QGroupBox("Models")
         model_layout = QVBoxLayout()
         self.model_buttons = {
@@ -94,7 +123,7 @@ class MainWindow(QMainWindow):
             model_layout.addWidget(button)
         model_group.setLayout(model_layout)
         
-        # Data Source GroupBox
+        # Data Sources
         data_group = QGroupBox("Data Sources")
         data_layout = QVBoxLayout()
         self.data_sources = {
@@ -113,14 +142,12 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.start_prediction_button)
         button_layout.addWidget(self.display_data_button)
         
-        # Console Output TextEdit
+        # Console Output TextEdit (Unix-like style)
         self.output_console = QTextEdit()
         self.output_console.setReadOnly(True)
-        # Style for Unix-like console appearance
         self.output_console.setStyleSheet("background-color: black; color: lightgreen; font-family: Courier; font-size: 10pt;")
 
-        
-        # Output Control Buttons (Clear and Copy)
+        # Output Controls
         output_control_layout = QHBoxLayout()
         self.clear_output_button = QPushButton("Clear")
         self.copy_output_button = QPushButton("Copy")
@@ -129,9 +156,9 @@ class MainWindow(QMainWindow):
         
         # Progress Bar
         self.progress_bar = QProgressBar()
-        self.progress_bar.setValue(0)  # Initialize progress bar at 0%
+        self.progress_bar.setValue(0)
 
-        # Add all widgets to layout
+        # Layout setup
         top_layout = QHBoxLayout()
         top_layout.addWidget(model_group)
         top_layout.addWidget(data_group)
@@ -140,22 +167,150 @@ class MainWindow(QMainWindow):
         layout.addLayout(button_layout)
         layout.addWidget(QLabel("Output:"))
         layout.addWidget(self.output_console)
-        layout.addLayout(output_control_layout)  # Add Clear and Copy buttons below the output console
-        layout.addWidget(self.progress_bar)  # Add the progress bar
+        layout.addLayout(output_control_layout)
+        layout.addWidget(self.progress_bar)
         
         tab.setLayout(layout)
         return tab
 
-    def create_model_tab(self, model_name):
-        """Creates a model-specific tab with parameter controls for a given model."""
+#from PyQt5.QtWidgets import (
+#    QGroupBox, QLabel, QSpinBox, QSlider, QDoubleSpinBox, QVBoxLayout, QHBoxLayout, QWidget, QComboBox, QPushButton
+#)
+#from PyQt5.QtCore import Qt
+
+    def create_lstm_tab(self):
+        """Creates the LSTM model tab with elegant, organized UI components for parameter inputs."""
         tab = QWidget()
         layout = QVBoxLayout()
-        
-        # Placeholder for parameter controls (to be customized for each model)
-        layout.addWidget(QLabel(f"Parameter controls for {model_name} model"))
-        
+
+        # Create parameter groups
+        # Epochs Group
+        epochs_group = QGroupBox("Epoch Settings")
+        epochs_layout = QHBoxLayout()
+        epochs_label = QLabel("Epochs:")
+        self.epochs_input = QSpinBox()
+        self.epochs_input.setRange(1, 100)
+        self.epochs_input.setValue(2)
+        self.epochs_input.setToolTip("Number of complete passes through the training data.")
+        epochs_layout.addWidget(epochs_label)
+        epochs_layout.addWidget(self.epochs_input)
+        epochs_group.setLayout(epochs_layout)
+        layout.addWidget(epochs_group)
+
+        # Batch Size Group
+        batch_size_group = QGroupBox("Batch Size Settings")
+        batch_size_layout = QHBoxLayout()
+        batch_size_label = QLabel("Batch Size:")
+        self.batch_size_input = QComboBox()
+        self.batch_size_input.addItems(["1", "16", "32", "64", "128"])
+        self.batch_size_input.setToolTip("Number of samples processed before updating the model.")
+        batch_size_layout.addWidget(batch_size_label)
+        batch_size_layout.addWidget(self.batch_size_input)
+        batch_size_group.setLayout(batch_size_layout)
+        layout.addWidget(batch_size_group)
+
+        # Units Group
+        units_group = QGroupBox("LSTM Units")
+        units_layout = QHBoxLayout()
+        units_label = QLabel("LSTM Units:")
+        self.units_slider = QSlider(Qt.Horizontal)
+        self.units_slider.setRange(10, 200)
+        self.units_slider.setValue(50)
+        self.units_slider.setToolTip("Number of neurons in the LSTM layer.")
+        self.units_value_label = QLabel("50")
+        self.units_slider.valueChanged.connect(lambda: self.units_value_label.setText(str(self.units_slider.value())))
+        units_layout.addWidget(units_label)
+        units_layout.addWidget(self.units_slider)
+        units_layout.addWidget(self.units_value_label)
+        units_group.setLayout(units_layout)
+        layout.addWidget(units_group)
+
+        # Learning Rate Group
+        learning_rate_group = QGroupBox("Learning Rate")
+        learning_rate_layout = QHBoxLayout()
+        learning_rate_label = QLabel("Learning Rate:")
+        self.learning_rate_input = QDoubleSpinBox()
+        self.learning_rate_input.setRange(0.000001, 1.0)
+        self.learning_rate_input.setSingleStep(0.000001)
+        self.learning_rate_input.setDecimals(6)
+        self.learning_rate_input.setValue(0.001)
+        self.learning_rate_input.setToolTip("Step size for each iteration to converge towards the optimal value.")
+        learning_rate_layout.addWidget(learning_rate_label)
+        learning_rate_layout.addWidget(self.learning_rate_input)
+        learning_rate_group.setLayout(learning_rate_layout)
+        layout.addWidget(learning_rate_group)
+
+        # Lookback Group
+        lookback_group = QGroupBox("Lookback Window Size")
+        lookback_layout = QHBoxLayout()
+        lookback_label = QLabel("Lookback Window Size:")
+        self.lookback_slider = QSlider(Qt.Horizontal)
+        self.lookback_slider.setRange(10, 60)
+        self.lookback_slider.setValue(30)
+        self.lookback_value_label = QLabel("30")
+        self.lookback_slider.setToolTip("Number of previous time steps to consider for each prediction.")
+        self.lookback_slider.valueChanged.connect(lambda: self.lookback_value_label.setText(str(self.lookback_slider.value())))
+        lookback_layout.addWidget(lookback_label)
+        lookback_layout.addWidget(self.lookback_slider)
+        lookback_layout.addWidget(self.lookback_value_label)
+        lookback_group.setLayout(lookback_layout)
+        layout.addWidget(lookback_group)
+
+        # Save and Load Buttons
+        button_layout = QHBoxLayout()
+        self.save_params_button = QPushButton("Save Parameters")
+        self.load_params_button = QPushButton("Load Parameters")
+        self.save_params_button.setToolTip("Save the current parameters as the optimal configuration.")
+        self.load_params_button.setToolTip("Load previously saved optimal parameters.")
+        button_layout.addWidget(self.save_params_button)
+        button_layout.addWidget(self.load_params_button)
+
+        # Add the Save and Load Buttons layout
+        layout.addLayout(button_layout)
+
+        # Connect buttons to methods
+        self.save_params_button.clicked.connect(self.save_parameters)
+        self.load_params_button.clicked.connect(self.load_parameters)
+
         tab.setLayout(layout)
         return tab
+
+    def save_parameters(self):
+        """Saves the current LSTM parameters to a JSON file."""
+        parameters = {
+            "epochs": self.epochs_input.value(),
+            "batch_size": int(self.batch_size_input.currentText()),  # Use currentText() and convert to int
+            "units": self.units_slider.value(),
+            "learning_rate": self.learning_rate_input.value(),
+            "lookback": self.lookback_slider.value()
+        }
+        try:
+            with open("lstm_parameters.json", "w") as file:
+                json.dump(parameters, file)
+            self.output_console.append("LSTM parameters saved successfully.")
+        except Exception as e:
+            self.output_console.append(f"Failed to save parameters: {e}")
+
+
+    def load_parameters(self):
+        """Loads LSTM parameters from a JSON file and updates input fields."""
+        try:
+            with open("lstm_parameters.json", "r") as file:
+                parameters = json.load(file)
+
+            # Set values for each parameter
+            self.epochs_input.setValue(parameters.get("epochs", 20))
+            self.batch_size_input.setCurrentText(str(parameters.get("batch_size", 32)))  # Convert batch size to string
+            self.units_slider.setValue(parameters.get("units", 50))
+            self.learning_rate_input.setValue(parameters.get("learning_rate", 0.001))
+            self.lookback_slider.setValue(parameters.get("lookback", 30))
+
+            self.output_console.append("LSTM parameters loaded successfully.")
+        except FileNotFoundError:
+            self.output_console.append("No saved parameters found.")
+        except Exception as e:
+            self.output_console.append(f"Failed to load parameters: {e}")
+
 
     def display_data(self):
         """Fetches and displays a sample of data from Yahoo Finance."""
@@ -169,7 +324,6 @@ class MainWindow(QMainWindow):
                 self.output_console.append("Failed to fetch data or data is empty.")
         else:
             self.output_console.append("Please select Yahoo Finance as the data source to display data.")
-
 
     def start_prediction(self):
         """Starts the prediction process using the selected model and fetched data."""
@@ -191,77 +345,50 @@ class MainWindow(QMainWindow):
 
         # Determine which model to use
         if model_name == "LSTM":
-            # Retrieve LSTM-specific parameters
-            epochs = self.epochs_spinbox.value()
-            batch_size = int(self.batch_size_combo.currentText())
-            units = self.units_slider.value()
-            learning_rate = float(self.learning_rate_combo.currentText())
-            lookback = self.lookback_slider.value()
-            
-            # Start LSTM training in a separate thread with user-specified parameters
-            self.worker = TrainWorker(
-                scaled_data, scaler, epochs=epochs, batch_size=batch_size, 
-                units=units, learning_rate=learning_rate, lookback=lookback
-            )
-            self.worker.progress.connect(self.output_console.append)  # Connect progress to console
-            self.worker.progress_value.connect(self.progress_bar.setValue)  # Update progress bar
-            self.worker.result.connect(self.display_result)  # Display final result in console
-            self.progress_bar.setValue(0)  # Reset progress bar
-            self.worker.start()  # Start the worker thread
-
+            self.train_lstm(scaled_data, scaler)
         elif model_name == "ARIMA":
-            # Run ARIMA model directly and display results
             forecast, mse = run_arima(combined_data['Close'])
             self.display_result(forecast, mse)
-
         elif model_name == "LR":
-            # Run Linear Regression model directly and display results
             forecast, mse = run_linear_regression(combined_data)
             self.display_result(forecast, mse)
-
         elif model_name == "ETS":
-            # Run ETS model directly and display results
             forecast, mse = run_ets(combined_data['Close'])
             self.display_result(forecast, mse)
         else:
             self.output_console.append("Unknown model selected.")
 
-    def display_result(self, forecast, mse):
-        """Displays the final forecast and MSE after training or prediction."""
-        self.output_console.append(f"Forecast: {forecast}")
-        self.output_console.append(f"MSE: {mse}\n")
-        self.progress_bar.setValue(100)  # Set progress to 100% upon completion
+    def train_lstm(self, scaled_data, scaler):
+        """Trains the LSTM model with the current parameters."""
+        epochs = self.epochs_input.value()
+        batch_size = int(self.batch_size_input.currentText())
+        units = self.units_slider.value()
 
-
-
-
-
-    def display_result(self, forecast, mse=None):
-        """Displays the forecast with dates in the Output Console in a user-friendly format."""
+        learning_rate = self.learning_rate_input.value()
+        lookback = 30  # You can add a slider or input for this if needed
         
-        # Get the last date in the data and calculate the next 5 prediction dates
-        last_date = self.data.index[-1]  # Assumes self.data has a datetime index
-        prediction_dates = pd.date_range(last_date, periods=len(forecast) + 1, freq='D')[1:]  # Skip the last_date itself
+        self.worker = TrainWorker(
+            scaled_data, scaler, epochs=epochs, batch_size=batch_size, 
+            units=units, learning_rate=learning_rate, lookback=lookback
+        )
+        self.worker.progress.connect(self.output_console.append)
+        self.worker.progress_value.connect(self.progress_bar.setValue)
+        self.worker.result.connect(self.display_result)
+        self.progress_bar.setValue(0)
+        self.worker.start()
 
-        # Display the forecast with dates
-        self.output_console.append("Forecast:")
+    def display_result(self, forecast, mse):
+        """Displays the final forecast with dates excluding weekends."""
+        start_date = datetime.now() + timedelta(days=1)
+        prediction_dates = get_next_business_days(start_date, num_days=len(forecast))
+        
+        self.output_console.append("Predicted 5-Day Forecast (excluding weekends):")
         for date, value in zip(prediction_dates, forecast):
-            # Ensure `value` is a scalar by extracting it if it's an array
-            if isinstance(value, np.ndarray):
-                value = value.item()  # Convert single-element array to a scalar
             self.output_console.append(f"{date.strftime('%Y-%m-%d')}: {value:.2f}")
-
-        # Optionally display MSE if needed
+        
         if mse is not None:
-            self.output_console.append(f"\nMSE: {mse}\n")
-
-        # Update progress bar to 100% upon completion
+            self.output_console.append(f"\nMSE: {mse:.4f}\n")
         self.progress_bar.setValue(100)
-
-
-
-
-
 
     def clear_output(self):
         """Clears the Output Console."""
@@ -272,65 +399,15 @@ class MainWindow(QMainWindow):
         clipboard = QApplication.clipboard()
         clipboard.setText(self.output_console.toPlainText())
 
-    # gui/main_gui.py
-
-
-    def create_model_tab(self, model_name):
-        """Creates a model-specific tab with parameter controls for a given model."""
-        tab = QWidget()
-        layout = QVBoxLayout()
-        
-        if model_name == "LSTM":
-            # Title Label
-            layout.addWidget(QLabel(f"Parameter controls for {model_name} model"))
-            
-            # Epochs
-            epochs_label = QLabel("Epochs:")
-            self.epochs_spinbox = QSpinBox()
-            self.epochs_spinbox.setRange(1, 100)  # Epochs from 1 to 100
-            self.epochs_spinbox.setValue(10)  # Default value
-            layout.addWidget(epochs_label)
-            layout.addWidget(self.epochs_spinbox)
-            
-            # Batch Size
-            batch_size_label = QLabel("Batch Size:")
-            self.batch_size_combo = QComboBox()
-            self.batch_size_combo.addItems(["1", "16", "32", "64"])  # Common batch sizes
-            layout.addWidget(batch_size_label)
-            layout.addWidget(self.batch_size_combo)
-            
-            # LSTM Units
-            units_label = QLabel("LSTM Units:")
-            self.units_slider = QSlider(Qt.Horizontal)
-            self.units_slider.setRange(10, 200)  # Units from 10 to 200
-            self.units_slider.setValue(50)  # Default value
-            self.units_value_label = QLabel("50")
-            self.units_slider.valueChanged.connect(lambda: self.units_value_label.setText(str(self.units_slider.value())))
-            layout.addWidget(units_label)
-            layout.addWidget(self.units_slider)
-            layout.addWidget(self.units_value_label)
-            
-            # Learning Rate
-            learning_rate_label = QLabel("Learning Rate:")
-            self.learning_rate_combo = QComboBox()
-            self.learning_rate_combo.addItems(["0.0001", "0.001", "0.01"])  # Common learning rates
-            layout.addWidget(learning_rate_label)
-            layout.addWidget(self.learning_rate_combo)
-            
-            # Lookback Window Size
-            lookback_label = QLabel("Lookback Window Size:")
-            self.lookback_slider = QSlider(Qt.Horizontal)
-            self.lookback_slider.setRange(10, 60)  # Lookback from 10 to 60
-            self.lookback_slider.setValue(30)  # Default value
-            self.lookback_value_label = QLabel("30")
-            self.lookback_slider.valueChanged.connect(lambda: self.lookback_value_label.setText(str(self.lookback_slider.value())))
-            layout.addWidget(lookback_label)
-            layout.addWidget(self.lookback_slider)
-            layout.addWidget(self.lookback_value_label)
-        
-        tab.setLayout(layout)
-        return tab
-
+def get_next_business_days(start_date, num_days=5):
+    """Generate the next business days, skipping Saturdays and Sundays."""
+    business_days = []
+    current_date = start_date
+    while len(business_days) < num_days:
+        if current_date.weekday() < 5:  # Monday=0, Sunday=6
+            business_days.append(current_date)
+        current_date += timedelta(days=1)
+    return business_days
 
 def main():
     app = QApplication(sys.argv)

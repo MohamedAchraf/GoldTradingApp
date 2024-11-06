@@ -1,27 +1,36 @@
 # gui/learning_dashboard_tab.py
 
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QGroupBox, QRadioButton, QCheckBox, QPushButton, QTextEdit, QLabel, QProgressBar, QHBoxLayout
+    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QRadioButton, QCheckBox,
+    QPushButton, QTextEdit, QProgressBar
 )
-from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt
 import yfinance as yf
+from datetime import datetime, timedelta  # Add this import
+from train_worker import TrainWorker
 from src.preprocessing import preprocess_data
-from src.models import run_lstm, run_arima, run_linear_regression, run_ets
 
 
 class LearningDashboardTab(QWidget):
-    # (Class code remains the same)
+    """Tab for model selection, data sources, and running predictions."""
 
-    """Defines the Learning Dashboard tab."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.data = None  # Placeholder for fetched data
+        self.parent = parent
+        self.lstm_tab = None  # Placeholder for LSTM tab instance
         self.init_ui()
 
+    def set_lstm_tab(self, lstm_tab):
+        """Sets the LSTM tab to access its parameters."""
+        self.lstm_tab = lstm_tab
+
     def init_ui(self):
-        """Initializes the Learning Dashboard tab UI."""
-        layout = QVBoxLayout()
-        
+        """Initializes the UI components."""
+        main_layout = QVBoxLayout()
+
+        # Horizontal layout to hold Models and Data Sources side by side
+        top_layout = QHBoxLayout()
+
         # Model Selection
         model_group = QGroupBox("Models")
         model_layout = QVBoxLayout()
@@ -34,50 +43,53 @@ class LearningDashboardTab(QWidget):
         for button in self.model_buttons.values():
             model_layout.addWidget(button)
         model_group.setLayout(model_layout)
-        
+
         # Data Sources
         data_group = QGroupBox("Data Sources")
         data_layout = QVBoxLayout()
         self.data_sources = {
-            "Yahoo Finance": QCheckBox("YAHOO Finance"),
+            "Yahoo Finance": QCheckBox("Yahoo Finance"),
             "Alpha Vantage": QCheckBox("Alpha Vantage"),
             "Local Data": QCheckBox("Local Data")
         }
         for checkbox in self.data_sources.values():
             data_layout.addWidget(checkbox)
         data_group.setLayout(data_layout)
-        
-        # Buttons and Console Output
+
+        # Add Data Sources and Models groups side by side
+        top_layout.addWidget(data_group)
+        top_layout.addWidget(model_group)
+
+        # Fetch Data and Start Prediction Buttons (Switched Order)
         button_layout = QHBoxLayout()
         self.display_data_button = QPushButton("Fetch Data")
         self.start_prediction_button = QPushButton("Start Prediction")
-        self.display_data_button.setIcon(QIcon("assets/icons/database-down.svg"))
-        self.start_prediction_button.setIcon(QIcon("assets/icons/play.svg"))
-        button_layout.addWidget(self.start_prediction_button)
-        button_layout.addWidget(self.display_data_button)
-        
-        # Console Output and Progress Bar
-        self.output_console = create_console_output()
+        self.display_data_button.clicked.connect(self.display_data)
+        self.start_prediction_button.clicked.connect(self.start_prediction)
+        button_layout.addWidget(self.display_data_button)  # "Fetch Data" on the left
+        button_layout.addWidget(self.start_prediction_button)  # "Start Prediction" on the right
+
+        # Console Output
+        self.output_console = QTextEdit()
+        self.output_console.setReadOnly(True)
+        self.output_console.setStyleSheet("background-color: black; color: lightgreen; font-family: Courier; font-size: 10pt;")
+
+        # Progress Bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
-        
-        # Arrange layout
-        top_layout = QHBoxLayout()
-        top_layout.addWidget(model_group)
-        top_layout.addWidget(data_group)
-        layout.addLayout(top_layout)
-        layout.addLayout(button_layout)
-        layout.addWidget(QLabel("Output:"))
-        layout.addWidget(self.output_console)
-        layout.addWidget(self.progress_bar)
-        self.setLayout(layout)
 
-        # Connect buttons to their respective functions
-        self.display_data_button.clicked.connect(self.fetch_data)
-        self.start_prediction_button.clicked.connect(self.start_prediction)
+        # Add widgets to the main layout
+        main_layout.addLayout(top_layout)
+        main_layout.addLayout(button_layout)
+        main_layout.addWidget(QLabel("Output:"))
+        main_layout.addWidget(self.output_console)
+        main_layout.addWidget(self.progress_bar)
 
-    def fetch_data(self):
-        """Fetches and displays a sample of data from Yahoo Finance."""
+        self.setLayout(main_layout)
+
+
+    def display_data(self):
+        """Fetches and displays sample data."""
         if self.data_sources["Yahoo Finance"].isChecked():
             self.output_console.append("Fetching data from Yahoo Finance...")
             self.data = yf.download('GC=F', interval='1d', start='2010-01-01')[['Close']]
@@ -90,47 +102,66 @@ class LearningDashboardTab(QWidget):
             self.output_console.append("Please select Yahoo Finance as the data source to display data.")
 
     def start_prediction(self):
-        """Starts the prediction process using the selected model and fetched data."""
+        """Starts the prediction process based on selected model and parameters."""
         selected_model = [key for key, button in self.model_buttons.items() if button.isChecked()]
-        
         if not selected_model:
             self.output_console.append("No model selected. Please select a model.")
             return
-        elif self.data is None:
+        elif not hasattr(self, 'data') or self.data is None:
             self.output_console.append("No data available. Please fetch data first.")
             return
 
         model_name = selected_model[0]
         self.output_console.append(f"Starting prediction using {model_name} model...")
 
-        # Preprocess data if needed
+        # Preprocess data
         combined_data = self.data.dropna()
         scaled_data, scaler = preprocess_data(combined_data)
 
-        # Determine which model to use and execute the prediction
         if model_name == "LSTM":
-            # Placeholder for running LSTM model, typically with additional parameters
-            forecast, mse = run_lstm(scaled_data, scaler, epochs=2, batch_size=1, units=50, learning_rate=0.001, lookback=30)
-            self.display_result(forecast, mse)
-        elif model_name == "ARIMA":
-            forecast, mse = run_arima(combined_data['Close'])
-            self.display_result(forecast, mse)
-        elif model_name == "LR":
-            forecast, mse = run_linear_regression(combined_data)
-            self.display_result(forecast, mse)
-        elif model_name == "ETS":
-            forecast, mse = run_ets(combined_data['Close'])
-            self.display_result(forecast, mse)
-        else:
-            self.output_console.append("Unknown model selected.")
+            if self.lstm_tab:
+                # Fetch parameters from LSTM tab
+                epochs = self.lstm_tab.epochs_input.value()
+                batch_size = int(self.lstm_tab.batch_size_input.currentText())
+                units = self.lstm_tab.units_slider.value()
+                learning_rate = self.lstm_tab.learning_rate_input.value()
+                lookback = self.lstm_tab.lookback_slider.value()
+
+                # Run LSTM prediction with parameters
+                self.train_lstm(scaled_data, scaler, epochs, batch_size, units, learning_rate, lookback)
+            else:
+                self.output_console.append("LSTM parameters not found.")
+                return
+
+    def train_lstm(self, scaled_data, scaler, epochs, batch_size, units, learning_rate, lookback):
+        """Trains the LSTM model and updates progress."""
+        self.worker = TrainWorker(
+            scaled_data, scaler, epochs=epochs, batch_size=batch_size, 
+            units=units, learning_rate=learning_rate, lookback=lookback
+        )
+        self.worker.progress.connect(self.output_console.append)
+        self.worker.progress_value.connect(self.progress_bar.setValue)
+        self.worker.result.connect(self.display_result)
+        self.progress_bar.setValue(0)
+        self.worker.start()
 
     def display_result(self, forecast, mse):
-        """Displays the final forecast with dates."""
+        """Displays forecast results and MSE."""
+        start_date = datetime.now() + timedelta(days=1)
+        prediction_dates = self.get_next_business_days(start_date, num_days=len(forecast))
         self.output_console.append("Predicted 5-Day Forecast:")
-        for value in forecast:
-            self.output_console.append(f"{value:.2f}")
-        
-        # Optionally display MSE
+        for date, value in zip(prediction_dates, forecast):
+            self.output_console.append(f"{date.strftime('%Y-%m-%d')}: {value:.2f}")
         if mse is not None:
             self.output_console.append(f"\nMSE: {mse:.4f}\n")
         self.progress_bar.setValue(100)
+
+    def get_next_business_days(self, start_date, num_days=5):
+        """Generate the next business days, skipping weekends."""
+        business_days = []
+        current_date = start_date
+        while len(business_days) < num_days:
+            if current_date.weekday() < 5:  # Monday=0, Sunday=6
+                business_days.append(current_date)
+            current_date += timedelta(days=1)
+        return business_days

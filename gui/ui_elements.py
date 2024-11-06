@@ -1,18 +1,9 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QPushButton, QSpinBox, QSlider, QComboBox, QTextEdit, QRadioButton, QCheckBox
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QIcon
+# gui/ui_elements.py
+from PyQt5.QtWidgets import QTextEdit
 
-def create_dashboard_tab(main_window):
-    # Define layout and widgets here (as in the main script)
-    # and use `main_window` attributes or methods if needed for connections.
-    tab = QWidget()
-    layout = QVBoxLayout()
-    # Model and data selection setup omitted for brevity
-    return tab
-
-def create_lstm_tab(main_window):
-    # Define the LSTM-specific controls (as in the main script)
-    tab = QWidget()
-    layout = QVBoxLayout()
-    # Setup for epochs, batch size, units, etc., omitted for brevity
-    return tab
+def create_console_output():
+    """Creates a styled QTextEdit widget to display console-like output."""
+    console_output = QTextEdit()
+    console_output.setReadOnly(True)
+    console_output.setStyleSheet("background-color: black; color: lightgreen; font-family: Courier; font-size: 10pt;")
+    return console_output

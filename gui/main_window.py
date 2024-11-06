@@ -39,7 +39,6 @@ from train_worker import TrainWorker  # Adjust if needed
 
 
 
-
 from ui_elements import create_dashboard_tab, create_lstm_tab
 
 class MainWindow(QMainWindow):
@@ -171,10 +170,6 @@ class MainWindow(QMainWindow):
         tab.setLayout(layout)
         return tab
 
-#from PyQt5.QtWidgets import (
-#    QGroupBox, QLabel, QSpinBox, QSlider, QDoubleSpinBox, QVBoxLayout, QHBoxLayout, QWidget, QComboBox, QPushButton
-#)
-#from PyQt5.QtCore import Qt
 
     def create_lstm_tab(self):
         """Creates the LSTM model tab with elegant, organized UI components for parameter inputs."""
